@@ -1,103 +1,190 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import { LeagueSidebar } from "@/custom_components/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
+
+type Competition = {
+  id: number;
+  name: string;
+  emblemUrl?: string;
+};
+
+export default function DashboardPage() {
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+
+  const [matches, setMatches] = useState<any[]>([]);
+  const [standings, setStandings] = useState<any[]>([]);
+  const [scorers, setScorers] = useState<any[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch competitions initially
+  useEffect(() => {
+    const fetchCompetitions = async () => {
+      try {
+        const res = await fetch(`/api/competitions`);
+        const data = await res.json();
+  
+        console.log('Fetched competitions response:', data); // 🔍 Debug line
+  
+        if (!data || !Array.isArray(data.competitions)) {
+          throw new Error("Invalid response format");
+        }
+  
+        const competitionsMapped: Competition[] = data.competitions.map((comp: any) => ({
+          id: comp.id,
+          name: comp.name,
+          emblemUrl: typeof comp.emblem === 'string' ? comp.emblem : undefined,
+        }));
+  
+        setCompetitions(competitionsMapped);
+        setSelectedLeagueId(competitionsMapped[0]?.id ?? null);
+      } catch (err) {
+        console.error("Failed to load competitions:", err);
+        setError("Failed to load competitions.");
+      }
+    };
+    fetchCompetitions();
+  }, []);
+  
+
+  // Fetch league data when selection changes
+  useEffect(() => {
+    if (!selectedLeagueId) return;
+
+    const fetchAll = async () => {
+      setLoading(true);
+      try {
+        const [liveRes, standingsRes, scorersRes] = await Promise.all([
+          fetch(`/api/live/${selectedLeagueId}`),
+          fetch(`/api/standings/${selectedLeagueId}`),
+          fetch(`/api/scorers/${selectedLeagueId}`),
+        ]);
+
+        const [liveData, standingsData, scorersData] = await Promise.all([
+          liveRes.json(),
+          standingsRes.json(),
+          scorersRes.json(),
+        ]);
+
+        setMatches(liveData.matches || []);
+        setStandings(standingsData.standings?.[0]?.table || []);
+        setScorers(scorersData.scorers || []);
+        setError(null);
+      } catch (err) {
+        setError("Error loading league data.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAll();
+  }, [selectedLeagueId]);
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+    <div className="flex min-h-screen bg-gray-50">
+      {competitions === undefined ? (
+        <p>Loading leagues...</p>
+      ) : (
+        <LeagueSidebar
+          competitions={competitions}
+          selectedLeagueId={selectedLeagueId}
+          onSelectLeague={setSelectedLeagueId}
         />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+      )}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
+      <main className="flex-1 p-6">
+        <h1 className="text-2xl font-bold mb-6">Football Dashboard</h1>
+
+        {error && <p className="text-red-500">{error}</p>}
+
+        {loading ? (
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-1/2" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ) : (
+          <>
+            {/* Live Matches */}
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold mb-2">Live Matches</h2>
+              {matches.length === 0 ? (
+                <p>No live matches currently.</p>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {matches.map((match) => (
+                    <Card key={match.id}>
+                      <CardContent className="p-4">
+                        <p className="font-medium">
+                          {match.homeTeam.name} vs {match.awayTeam.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Score: {match.score.fullTime.home ?? 0} -{" "}
+                          {match.score.fullTime.away ?? 0}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Standings */}
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold mb-2">Standings</h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-left border">
+                  <thead>
+                    <tr className="bg-gray-100 border-b">
+                      <th className="p-2">#</th>
+                      <th className="p-2">Team</th>
+                      <th className="p-2">Points</th>
+                      <th className="p-2">Won</th>
+                      <th className="p-2">Lost</th>
+                      <th className="p-2">Draw</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {standings.map((team) => (
+                      <tr key={team.team.id} className="border-b">
+                        <td className="p-2">{team.position}</td>
+                        <td className="p-2">{team.team.name}</td>
+                        <td className="p-2">{team.points}</td>
+                        <td className="p-2">{team.won}</td>
+                        <td className="p-2">{team.lost}</td>
+                        <td className="p-2">{team.draw}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* Top Scorers */}
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold mb-2">Top Scorers</h2>
+              <ul className="space-y-2">
+                {scorers.map((player: any, i: number) => (
+                  <li
+                    key={i}
+                    className="flex justify-between p-3 border rounded"
+                  >
+                    <span>
+                      {player.player.name} ({player.team.name})
+                    </span>
+                    <span className="font-bold">{player.goals} goals</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
